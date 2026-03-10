@@ -651,7 +651,7 @@ export default function Home() {
     }))
     setAgents(initialAgents)
 
-    const params: SearchParams = { sneakerName, size, colorway, region }
+    const params: SearchParams = { sneakerName, size, colorway, region, currency }
     const goal = buildGoal(params, currency)
 
     // Launch all agents in parallel
