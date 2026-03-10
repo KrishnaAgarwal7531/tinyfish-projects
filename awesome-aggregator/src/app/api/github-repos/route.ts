@@ -125,7 +125,9 @@ export async function GET(req: NextRequest) {
       // Always return at least 7 — pad with GitHub search if needed
       if (repos.length >= 7) return Response.json({ repos: repos.slice(0, 10), source: 'curated' })
       const extra = await searchGitHub(topic)
-      const combined = [...new Set([...repos, ...extra])].slice(0, 10)
+      const seen = new Set(repos)
+      extra.forEach(r => seen.add(r))
+      const combined = Array.from(seen).slice(0, 10)
       return Response.json({ repos: combined, source: 'curated' })
     }
   }
