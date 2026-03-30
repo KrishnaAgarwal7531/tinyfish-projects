@@ -3,9 +3,9 @@
 **Real student reviews for any university course, instantly.**
 
 ModuleMapper lets you look up any course at any university and get a structured, AI-synthesised verdict based on live student reviews scraped from Reddit, RateMyProfessors, university course platforms, and student blogs — all in real time.
-**Live Link - ** https://modulemapper-ten.vercel.app/
----
 
+---
+Live Link -  https://modulemapper-ten.vercel.app/ 
 ## What it does
 
 Type in a course code (e.g. `BT1101`) and a university (e.g. `NUS`) and ModuleMapper will:
