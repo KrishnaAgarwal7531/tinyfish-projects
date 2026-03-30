@@ -24,33 +24,28 @@ async function scrapeSite(
         url,
         browser_profile: "stealth",
         proxy_config: { enabled: true, country_code: "US" },
-        goal: `You are a fast, focused web intelligence agent for maritime shipping risk analysis.
-SOURCE TYPE: ${category.replace(/_/g, " ").toUpperCase()}
-RULES:
-- Dismiss any cookie/consent/subscription popup immediately
-- Stay on THIS page only — never click links or navigate
-- Finish in under 50 seconds
-- Extract 5–7 items from what is visible on this page
+        goal: `ROLE: Fast maritime intelligence extractor. SOURCE: ${category.replace(/_/g, " ").toUpperCase()}
+STRICT RULES — no exceptions:
+- Do NOT click any link, button, menu, popup, cookie banner, or ad
+- Read ONLY what is visible on the current page
+- Complete in under 40 seconds
+- If a popup appears, ignore it and read around it — do not interact
 
 TASK: ${goal}
 
-RETURN FORMAT — plain bullet list only:
-• [Title/Headline] — [2–3 sentence summary with specific numbers: port names, storm names, vessel names, USD rates, % changes, delay days, dates]
-
-Prioritise: ${
+EXTRACT exactly 5 items visible on this page. Output as plain bullets only:
+• [Headline] — [1–2 sentences with specific data: ${
   category === "weather"
-    ? "storm names, wind speeds km/h, wave heights m, affected regions, severity"
-    : category === "port_authority"
-    ? "berth availability, waiting times in hours/days, congestion %, fee changes, restrictions"
+    ? "storm name, wind speed, wave height, affected region"
     : category === "freight_rates"
-    ? "rate per FEU in USD, week-on-week % change, specific trade lane rates"
+    ? "USD/FEU rate, % week-on-week change, trade lane"
     : category === "geopolitical"
-    ? "incident locations with coordinates if shown, vessel names, attack types, military activity"
+    ? "incident location, vessel name, threat type"
     : category === "supply_chain"
-    ? "dwell times, equipment shortages, blank sailings, schedule reliability %"
-    : "port congestion, rate changes, strikes, weather, canal delays, vessel diversions"
-}
-Stop after 7 bullets.`,
+    ? "dwell time, equipment shortage, schedule reliability %"
+    : "port name, delay hours, congestion %, rate change"
+}]
+Stop after 5 bullets. Do not summarise, explain, or add commentary.`,
       }),
       signal: controller.signal,
     });
@@ -138,7 +133,6 @@ async function analyseWithGroq(
 
   const structuredData = [
     formatSection("weather", "WEATHER INTELLIGENCE"),
-    formatSection("port_authority", "PORT AUTHORITY BULLETINS"),
     formatSection("freight_rates", "FREIGHT RATE DATA"),
     formatSection("geopolitical", "GEOPOLITICAL & SECURITY"),
     formatSection("maritime_news", "MARITIME NEWS"),
