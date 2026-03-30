@@ -2,6 +2,8 @@
 
 > Aggregate GitHub Awesome-* lists in parallel using TinyFish AI agents
 
+Live Link - https://awesomeaggregator.vercel.app/ 
+
 ## What it does
 
 Enter a topic (e.g. `machine-learning`, `react`, `rust`) and TinyFish agents scrape 5–10 GitHub Awesome repos **simultaneously**, returning a unified, deduplicated, searchable resource directory.
