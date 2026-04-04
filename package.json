@@ -1,0 +1,14 @@
+{
+  "name": "tinyfish-projects",
+  "version": "1.0.0",
+  "dependencies": {
+    "stripe": "^14.0.0",
+    "mongoose": "^8.0.0",
+    "@supabase/supabase-js": "^2.0.0",
+    "twilio": "^5.0.0",
+    "sendgrid": "^7.0.0",
+    "openai": "^4.0.0",
+    "@anthropic-ai/sdk": "^0.20.0",
+    "sentry": "^7.0.0"
+  }
+}
