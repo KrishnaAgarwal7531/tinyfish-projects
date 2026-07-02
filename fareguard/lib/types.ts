@@ -1,4 +1,4 @@
-export type RouteCode = "HAN-SGN" | "SGN-DAD";
+export type RouteCode = string;
 
 export interface RouteInfo {
   code: RouteCode;

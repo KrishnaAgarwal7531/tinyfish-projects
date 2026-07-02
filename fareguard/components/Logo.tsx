@@ -1,31 +1,35 @@
 export default function Logo({ size = 20 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path
-        d="M16 2.5L27.5 7v8.2c0 7.4-4.9 13.6-11.5 14.8C9.4 28.8 4.5 22.6 4.5 15.2V7L16 2.5Z"
-        fill="url(#fg-shield-fill)"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9.5 18.5c2.6-4.8 5.6-8.4 8.7-10.6.9-.6 1.9-1 3-1.2-.5 1-1.1 1.9-1.9 2.7-2.9 3-6 6.4-8 9.9"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeDasharray="0.5 3"
-        opacity="0.6"
-      />
-      <path
-        d="M12.8 20.2l2.8-2.7 1.9.6-3.6 3.5-1.1-1.4Zm2.9-2.8 4-3.9c1-.9 1.7-.4 1.3.8l-1.7 5.1-1.9-.5-.5-1.9-1.2.4Z"
-        fill="currentColor"
-      />
       <defs>
-        <linearGradient id="fg-shield-fill" x1="16" y1="2.5" x2="16" y2="30" gradientUnits="userSpaceOnUse">
-          <stop stopColor="currentColor" stopOpacity="0.16" />
-          <stop offset="1" stopColor="currentColor" stopOpacity="0.02" />
+        <linearGradient id="fg-jet" x1="4" y1="26" x2="28" y2="4" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#1E3A8A" />
+          <stop offset="1" stopColor="#7DD3FC" />
         </linearGradient>
       </defs>
+      {/* Orbit ring / swoosh — passes behind the plane, loops back over itself */}
+      <path
+        d="M4.5 19c1 5.5 9 8 15 5.3 4-1.8 6-4.6 5.3-6.7"
+        stroke="url(#fg-jet)"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path
+        d="M6.5 23.3c4.3 2.6 12.5 2.2 16.6-3.1 1.6-2 2-4 1.2-5.4"
+        stroke="url(#fg-jet)"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        fill="none"
+        opacity="0.85"
+      />
+      {/* Jet, breaking out of the loop toward the upper right */}
+      <path
+        d="M11 19.5c3.6-3.4 7.9-6.4 11.6-8L27 6.3c1.1-1 2.4-.5 2 1l-2.1 7.7c-.6 2.5-3.1 5.7-6.2 7.9-2.7 2-8.7 4.6-11 4.2-.6-.1-.4-1 .3-1.7Z"
+        fill="url(#fg-jet)"
+      />
+      <path d="M17.8 15.2 13.6 14l2-2 3.3.7-1.1 2.5Z" fill="url(#fg-jet)" />
+      <path d="M21.6 20.2 22.9 24.4l-2-1.9-.9-3.3 1.6.9Z" fill="url(#fg-jet)" />
     </svg>
   );
 }

@@ -5,7 +5,8 @@
 // KV_REST_API_TOKEN automatically, and this switches over with zero code
 // changes anywhere else in the app.
 
-import type { SitePriceSeries, BookingRequest, AgentStatus, RouteRecommendation, ScheduleMeta } from "./types";
+import type { SitePriceSeries, BookingRequest, AgentStatus, RouteRecommendation, ScheduleMeta, RouteInfo } from "./types";
+import { DEFAULT_ROUTES } from "./seed";
 import fs from "fs";
 
 const hasKv = Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
@@ -16,10 +17,11 @@ type MemoryShape = {
   agentStatuses: Record<string, AgentStatus>;
   recommendations: RouteRecommendation[];
   meta: Partial<ScheduleMeta>;
+  routes: RouteInfo[];
 };
 
 function emptyMemory(): MemoryShape {
-  return { priceSeries: {}, bookingRequests: [], agentStatuses: {}, recommendations: [], meta: {} };
+  return { priceSeries: {}, bookingRequests: [], agentStatuses: {}, recommendations: [], meta: {}, routes: [] };
 }
 
 // Local dev (no Redis configured) persists to a small JSON file on disk
@@ -145,7 +147,7 @@ export const store = {
       sweepStartedAt: null,
       lastAnalyzeAt: null,
       lastDispatchedAt: null,
-      sweepIntervalMs: 4 * 60 * 60 * 1000,
+      sweepIntervalMs: 8 * 60 * 60 * 1000,
       analyzeIntervalMs: 24 * 60 * 60 * 1000,
       usingRealAgents: Boolean(process.env.TINYFISH_API_KEY),
     };
@@ -166,6 +168,33 @@ export const store = {
     const client = await kv();
     await client.set("meta", next);
     return next;
+  },
+
+  async getRoutes(): Promise<RouteInfo[]> {
+    if (!hasKv) {
+      if (memory.routes.length === 0) {
+        memory.routes = DEFAULT_ROUTES;
+        persist();
+      }
+      return memory.routes;
+    }
+    const client = await kv();
+    const data = await client.get<RouteInfo[]>("routes");
+    if (!data || data.length === 0) {
+      await client.set("routes", DEFAULT_ROUTES);
+      return DEFAULT_ROUTES;
+    }
+    return data;
+  },
+
+  async setRoutes(data: RouteInfo[]) {
+    if (!hasKv) {
+      memory.routes = data;
+      persist();
+      return;
+    }
+    const client = await kv();
+    await client.set("routes", data);
   },
 
   usingKv: hasKv,

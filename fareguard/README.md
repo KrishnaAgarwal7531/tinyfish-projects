@@ -7,7 +7,7 @@ Corporate travel cost control — live fare and demand tracking across Vietnam a
 The real scraping does **not** run on Vercel. A 7-site TinyFish sweep can take longer than Vercel's function time limit (60s on Hobby), so the heavy lifting runs on a free **GitHub Actions** schedule instead:
 
 ```
-GitHub Actions (every 4 hours)
+GitHub Actions (every 8 hours)
   → scripts/sweep.ts
   → calls TinyFish for all 7 sites in parallel
   → if the daily analysis is due, also calls Groq
@@ -65,7 +65,7 @@ Settings → Secrets and variables → Actions, add:
 - `KV_REST_API_TOKEN`
 - `GROQ_API_KEY` (optional, falls back to heuristic without it)
 
-This is what `.github/workflows/sweep.yml` uses to run the real sweep every 4 hours.
+This is what `.github/workflows/sweep.yml` uses to run the real sweep every 8 hours.
 
 ### 4. Deploy the app to Vercel
 Add these env vars on the Vercel project:
@@ -77,7 +77,7 @@ Add these env vars on the Vercel project:
 - `GITHUB_REPO` — e.g. `yourname/fareguard`
 
 ### 5. Confirm the schedule
-`.github/workflows/sweep.yml` runs every 4 hours automatically once pushed to GitHub — no extra setup needed beyond the secrets in step 3. You can also trigger it manually from the repo's Actions tab, or via the dashboard's "Run sweep now" button once Vercel is deployed.
+`.github/workflows/sweep.yml` runs every 8 hours automatically once pushed to GitHub — no extra setup needed beyond the secrets in step 3. You can also trigger it manually from the repo's Actions tab, or via the dashboard's "Run sweep now" button once Vercel is deployed.
 
 ## Wiring in real booking automation
 

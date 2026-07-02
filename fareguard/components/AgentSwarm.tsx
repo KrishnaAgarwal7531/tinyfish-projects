@@ -11,11 +11,13 @@ export default function AgentSwarm({
   meta,
   onRunNow,
   running,
+  routeCount,
 }: {
   agentStatuses: Record<string, AgentStatus>;
   meta: ScheduleMeta | null;
   onRunNow: () => void;
   running: boolean;
+  routeCount: number;
 }) {
   const nextSweepAt =
     meta?.lastSweepAt && meta.sweepIntervalMs
@@ -45,7 +47,7 @@ export default function AgentSwarm({
             )}
           </p>
           <p className="text-xs text-text-muted mt-0.5">
-            7 agents in parallel, one per site, each covering both routes
+            7 agents in parallel, one per site, each covering all {routeCount} {routeCount === 1 ? "route" : "routes"}
           </p>
         </div>
         <div className="flex items-center gap-3">

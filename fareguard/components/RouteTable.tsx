@@ -1,19 +1,16 @@
 "use client";
 
-import { ROUTES, SITES } from "@/lib/seed";
-import type { SitePriceSeries, RouteCode, RouteRecommendation } from "@/lib/types";
+import { SITES } from "@/lib/seed";
+import type { SitePriceSeries, RouteCode, RouteRecommendation, RouteInfo } from "@/lib/types";
 import { formatVnd } from "@/lib/format";
 
-function bestSite(priceSeries: Record<string, SitePriceSeries>, routeCode: RouteCode) {
-  type Best = { siteName: string; price: number };
-  let best: Best | null = null;
+function cheapestFare(priceSeries: Record<string, SitePriceSeries>, routeCode: RouteCode) {
+  let best: number | null = null;
   for (const site of SITES) {
     const series = priceSeries[`${site.id}__${routeCode}`];
     if (!series || series.history.length === 0) continue;
     const price = series.history[series.history.length - 1].priceVnd;
-    if (best === null || price < best.price) {
-      best = { siteName: site.name, price };
-    }
+    if (best === null || price < best) best = price;
   }
   return best;
 }
@@ -38,28 +35,33 @@ function routeStatus(rec: RouteRecommendation | undefined): { label: string; cla
 export default function RouteTable({
   priceSeries,
   recommendations,
+  routes,
   selectedRoute,
   onSelect,
 }: {
   priceSeries: Record<string, SitePriceSeries>;
   recommendations: RouteRecommendation[];
-  selectedRoute: RouteCode;
+  routes: RouteInfo[];
+  selectedRoute: RouteCode | null;
   onSelect: (route: RouteCode) => void;
 }) {
+  if (routes.length === 0) {
+    return <p className="text-sm text-text-muted py-6 text-center">No routes yet — add one above to get started.</p>;
+  }
+
   return (
     <table className="w-full text-sm">
       <thead>
         <tr className="text-left text-text-secondary text-xs">
           <th className="font-normal pb-2">Route</th>
-          <th className="font-normal pb-2">Best site</th>
           <th className="font-normal pb-2">Fare</th>
           <th className="font-normal pb-2">Trend</th>
           <th className="font-normal pb-2">Status</th>
         </tr>
       </thead>
       <tbody>
-        {ROUTES.map((route) => {
-          const best = bestSite(priceSeries, route.code);
+        {routes.map((route) => {
+          const fare = cheapestFare(priceSeries, route.code);
           const trend = trendPct(priceSeries, route.code);
           const active = route.code === selectedRoute;
           const status = routeStatus(recommendations.find((r) => r.routeCode === route.code));
@@ -77,8 +79,7 @@ export default function RouteTable({
                   {route.from} → {route.to}
                 </span>
               </td>
-              <td className="py-2.5 text-text-secondary">{best?.siteName ?? "—"}</td>
-              <td className="py-2.5 tabular">{best ? formatVnd(best.price) : "—"}</td>
+              <td className="py-2.5 tabular">{fare !== null ? formatVnd(fare) : "—"}</td>
               <td className="py-2.5">
                 <span className={trend < -0.5 ? "text-success" : trend > 0.5 ? "text-danger" : "text-text-secondary"}>
                   {trend > 0.5 ? "↑" : trend < -0.5 ? "↓" : "→"} {Math.abs(trend).toFixed(1)}%

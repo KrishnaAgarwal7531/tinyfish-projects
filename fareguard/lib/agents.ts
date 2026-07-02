@@ -1,26 +1,11 @@
 import { TinyFish, RunStatus, BrowserProfile } from "@tiny-fish/sdk";
 import type { Run } from "@tiny-fish/sdk";
-import type { SitePriceSeries, AgentStatus, PricePoint, RouteCode, SiteInfo } from "./types";
-import { SITES, ROUTES } from "./seed";
+import type { SitePriceSeries, AgentStatus, PricePoint, RouteCode, SiteInfo, RouteInfo } from "./types";
+import { SITES } from "./seed";
 
-// TinyFish's own docs: /run (synchronous) is only recommended for tasks
-// under ~30s. A real multi-route flight search is longer than that, so we
-// use queue() + poll, matching TinyFish's documented "Batch Processing"
-// pattern. This now runs entirely in the background (GitHub Actions, or a
-// fire-and-forget local sweep) so there's no real cost to polling for a
-// long time — the cap below is a safety valve against a truly stuck run,
-// not a meaningful limit on how long an agent is allowed to take.
 const POLL_INTERVAL_MS = 5000;
 const MAX_POLL_ATTEMPTS = 360; // 30 minutes at 5s intervals — safety valve, not a real cap
-
-// Airline/OTA sites commonly run bot protection that blocks the default
-// "lite" browser profile quickly. Stealth mode costs a bit more but is far
-// more likely to actually get through.
 const REAL_BROWSER_PROFILE = BrowserProfile.STEALTH;
-
-// Defaults to running all 7 sites fully in parallel. If you're ever on
-// TinyFish's free tier (2 concurrent agents) instead of a paid plan, set
-// TINYFISH_MAX_CONCURRENT=2 in your env to throttle this back down.
 const MAX_CONCURRENT_AGENTS = Number(process.env.TINYFISH_MAX_CONCURRENT ?? SITES.length);
 
 let _client: TinyFish | null = null;
@@ -44,15 +29,10 @@ function getClient(): TinyFish | null {
   return _client;
 }
 
-// TinyFish's documented best practice for repeated/scheduled scraping
-// ("Schema Enforcement for Batch Runs") is to embed the exact JSON shape,
-// with sample values, directly in the goal text — not a separate
-// output_schema parameter, which only accepts a narrower dialect server-side.
 // Vietnam is UTC+7. Using the server's UTC clock for "today" was wrong —
 // anywhere from 17:00 UTC onward, Vietnam has already rolled over to the
 // next calendar day while the server (e.g. a GitHub Actions runner, always
-// UTC) still thinks it's the previous one. That mismatch was causing the
-// agent to search a stale date against a site that's already a day ahead.
+// UTC) still thinks it's the previous one.
 function getVietnamDateString(): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Ho_Chi_Minh",
@@ -62,8 +42,14 @@ function getVietnamDateString(): string {
   }).format(new Date());
 }
 
-function buildGoal(): string {
+// TinyFish's documented best practice for repeated/scheduled scraping is to
+// embed the exact JSON shape, with sample values, directly in the goal text.
+// Routes are listed dynamically — whatever's currently in the routes store,
+// not a fixed pair, so newly-added routes get searched automatically.
+function buildGoal(routes: RouteInfo[]): string {
   const todayStr = getVietnamDateString();
+  const routeLines = routes.map((r) => `   - ${r.fromCity} to ${r.toCity} — route code ${r.code}`).join(" ");
+  const plural = routes.length === 1 ? "route" : "routes";
 
   return [
     `Today's date is ${todayStr} (Vietnam local time, UTC+7). Use this as the reference point — do not use the site's default search date or your own assumption of today's date.`,
@@ -73,37 +59,28 @@ function buildGoal(): string {
     "",
     "1. If a cookie banner, popup, or region/language selector appears, dismiss it first.",
     "2. Use the site's flight search for one-way, economy class, 1 adult passenger.",
-    `3. Search each of these two domestic routes for exactly this departure date: ${todayStr}. Do not check any other date.`,
-    "   - Hanoi to Ho Chi Minh City — route code HAN-SGN",
-    "   - Ho Chi Minh City to Da Nang — route code SGN-DAD",
+    `3. Search each of these ${routes.length} ${plural} for exactly this departure date: ${todayStr}. Do not check any other date.`,
+    routeLines,
     "4. For each route: try the search once. If it succeeds and you can see a price, extract it and move straight to the next route — do not search that route again or double-check it. Only if that first attempt fails (page doesn't load, no results, error) do you retry, up to 3 total attempts for that route. As soon as one attempt succeeds, or you've used all 3 attempts, stop and move to the next route.",
     "5. For each route, record only the lowest total price shown in the search results for that date.",
     "6. If a route isn't served by this site, omit it — do not estimate or guess a price.",
     "7. If the site shows a currency other than VND, convert to Vietnamese dong using the current rate.",
     "",
     "Return JSON matching this exact structure, with real values in place of the example:",
-    '{"fares": [{"route": "HAN-SGN", "price_vnd": 1250000}, {"route": "SGN-DAD", "price_vnd": 980000}]}',
+    `{"fares": [{"route": "${routes[0]?.code ?? "HAN-SGN"}", "price_vnd": 1250000}]}`,
     "price_vnd must be a plain integer — no currency symbol, no commas, no decimals.",
   ].join(" ");
 }
 
 type FareResult = { route: RouteCode; price_vnd: number };
 
-const VALID_ROUTES: RouteCode[] = ["HAN-SGN", "SGN-DAD"];
-
-function extractFares(result: Run["result"]): FareResult[] | null {
+function extractFares(result: Run["result"], validRoutes: Set<string>): FareResult[] | null {
   if (!result) return null;
-  // Goal-level failure: TinyFish completed the run but couldn't achieve the goal.
   if ((result as any).status === "failure" || (result as any).error) return null;
   const fares = (result as any).fares;
   if (!Array.isArray(fares)) return null;
   return fares.filter(
-    (f: any) =>
-      f &&
-      typeof f.route === "string" &&
-      VALID_ROUTES.includes(f.route as RouteCode) &&
-      typeof f.price_vnd === "number" &&
-      f.price_vnd > 0
+    (f: any) => f && typeof f.route === "string" && validRoutes.has(f.route) && typeof f.price_vnd === "number" && f.price_vnd > 0
   );
 }
 
@@ -115,15 +92,16 @@ async function pollUntilDone(client: TinyFish, runId: string): Promise<Run | nul
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
-  return null; // timed out waiting
+  return null;
 }
 
-async function callTinyFish(site: SiteInfo): Promise<FareResult[] | null> {
+async function callTinyFish(site: SiteInfo, routes: RouteInfo[]): Promise<FareResult[] | null> {
   const client = getClient();
   if (!client) return null;
+  const validRoutes = new Set(routes.map((r) => r.code));
 
   try {
-    const queued = await client.agent.queue({ url: site.url, goal: buildGoal(), browser_profile: REAL_BROWSER_PROFILE });
+    const queued = await client.agent.queue({ url: site.url, goal: buildGoal(routes), browser_profile: REAL_BROWSER_PROFILE });
     if (queued.error || !queued.run_id) {
       console.error(`TinyFish queue failed for ${site.id}:`, queued.error?.message);
       return null;
@@ -139,7 +117,7 @@ async function callTinyFish(site: SiteInfo): Promise<FareResult[] | null> {
       return null;
     }
 
-    const fares = extractFares(run.result);
+    const fares = extractFares(run.result, validRoutes);
     if (!fares || fares.length === 0) {
       console.error(`TinyFish run for ${site.id} returned no usable fares`);
       return null;
@@ -152,23 +130,16 @@ async function callTinyFish(site: SiteInfo): Promise<FareResult[] | null> {
 }
 
 // --- Skyscanner: Fetch (free, no automation) instead of Agent ---
-// Skyscanner publishes a documented deep-link search-results URL, so the
-// page already has the answer on it with no form-filling needed — just
-// render it and read the price off. Far cheaper and faster than a full
-// Agent run, and there's nothing to click so there's less for bot
-// protection to catch.
 function buildSkyscannerUrl(from: string, to: string): string {
-  const iso = getVietnamDateString(); // YYYY-MM-DD
+  const iso = getVietnamDateString();
   const yymmdd = iso.slice(2, 4) + iso.slice(5, 7) + iso.slice(8, 10);
   return `https://www.skyscanner.com.vn/transport/flights/${from.toLowerCase()}/${to.toLowerCase()}/${yymmdd}/`;
 }
 
-const SKYSCANNER_ROUTE_URLS: { route: RouteCode; from: string; to: string }[] = [
-  { route: "HAN-SGN", from: "HAN", to: "SGN" },
-  { route: "SGN-DAD", from: "SGN", to: "DAD" },
-];
-
-async function extractFaresFromTextsViaGroq(texts: { route: RouteCode; text: string }[]): Promise<FareResult[]> {
+async function extractFaresFromTextsViaGroq(
+  texts: { route: RouteCode; text: string }[],
+  validRoutes: Set<string>
+): Promise<FareResult[]> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey || texts.length === 0) return [];
 
@@ -210,12 +181,7 @@ async function extractFaresFromTextsViaGroq(texts: { route: RouteCode; text: str
     const parsed = JSON.parse(cleaned);
     const fares = Array.isArray(parsed?.fares) ? parsed.fares : [];
     return fares.filter(
-      (f: any) =>
-        f &&
-        typeof f.route === "string" &&
-        VALID_ROUTES.includes(f.route as RouteCode) &&
-        typeof f.price_vnd === "number" &&
-        f.price_vnd > 0
+      (f: any) => f && typeof f.route === "string" && validRoutes.has(f.route) && typeof f.price_vnd === "number" && f.price_vnd > 0
     );
   } catch (err) {
     console.error("Groq extraction error:", err);
@@ -223,9 +189,10 @@ async function extractFaresFromTextsViaGroq(texts: { route: RouteCode; text: str
   }
 }
 
-async function fetchSkyscannerFares(client: TinyFish): Promise<FareResult[] | null> {
+async function fetchSkyscannerFares(client: TinyFish, routes: RouteInfo[]): Promise<FareResult[] | null> {
   try {
-    const urls = SKYSCANNER_ROUTE_URLS.map((r) => buildSkyscannerUrl(r.from, r.to));
+    const urlEntries = routes.map((r) => ({ route: r.code, url: buildSkyscannerUrl(r.from, r.to) }));
+    const urls = urlEntries.map((e) => e.url);
     const response = await client.fetch.getContents({ urls, format: "markdown" });
 
     if (response.errors.length > 0) {
@@ -234,9 +201,9 @@ async function fetchSkyscannerFares(client: TinyFish): Promise<FareResult[] | nu
 
     const texts: { route: RouteCode; text: string }[] = [];
     response.results.forEach((result) => {
-      const idx = urls.indexOf(result.url);
-      if (idx === -1 || result.format !== "markdown" || !result.text) return;
-      texts.push({ route: SKYSCANNER_ROUTE_URLS[idx].route, text: result.text });
+      const entry = urlEntries.find((e) => e.url === result.url);
+      if (!entry || result.format !== "markdown" || !result.text) return;
+      texts.push({ route: entry.route, text: result.text });
     });
 
     if (texts.length === 0) {
@@ -244,7 +211,8 @@ async function fetchSkyscannerFares(client: TinyFish): Promise<FareResult[] | nu
       return null;
     }
 
-    const fares = await extractFaresFromTextsViaGroq(texts);
+    const validRoutes = new Set(routes.map((r) => r.code));
+    const fares = await extractFaresFromTextsViaGroq(texts, validRoutes);
     if (fares.length === 0) {
       console.error("Skyscanner: no fares extracted from fetched pages");
       return null;
@@ -258,18 +226,15 @@ async function fetchSkyscannerFares(client: TinyFish): Promise<FareResult[] | nu
 
 // Builds a "what's the market actually showing for this route right now"
 // reference price, so sites that failed this sweep don't end up showing
-// random, disconnected numbers next to sites that succeeded. Preference
-// order: (1) real fares other sites found THIS sweep, averaged, (2) the
-// most recent real price recorded for this route on any site, (3) the
-// most recent price of any kind (seed/simulated) for this route, so it's
-// at least continuous with what's already on the chart.
+// random, disconnected numbers next to sites that succeeded.
 function buildRouteReferences(
   realResultsBySite: Record<string, FareResult[] | null>,
-  priceSeries: Record<string, SitePriceSeries>
+  priceSeries: Record<string, SitePriceSeries>,
+  routes: RouteInfo[]
 ): Record<RouteCode, number | null> {
-  const refs: Record<RouteCode, number | null> = { "HAN-SGN": null, "SGN-DAD": null };
+  const refs: Record<RouteCode, number | null> = {};
 
-  ROUTES.forEach((route) => {
+  routes.forEach((route) => {
     const thisSweepPrices: number[] = [];
     Object.values(realResultsBySite).forEach((fares) => {
       const match = fares?.find((f) => f.route === route.code);
@@ -309,30 +274,26 @@ async function runInBatches<T>(items: T[], limit: number, fn: (item: T) => Promi
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
 
-export async function runAgentSweep(priceSeries: Record<string, SitePriceSeries>): Promise<{
+export async function runAgentSweep(
+  priceSeries: Record<string, SitePriceSeries>,
+  routes: RouteInfo[]
+): Promise<{
   priceSeries: Record<string, SitePriceSeries>;
   agentStatuses: Record<string, AgentStatus>;
 }> {
-  // Pass 1: attempt real TinyFish calls for every site in parallel.
-  // Skyscanner goes through Fetch (free, no automation needed); every
-  // other site goes through Agent.
   const realResultsBySite: Record<string, FareResult[] | null> = {};
   await runInBatches(SITES, MAX_CONCURRENT_AGENTS, async (site) => {
     const client = getClient();
     if (site.useFetch && client) {
-      realResultsBySite[site.id] = await fetchSkyscannerFares(client);
+      realResultsBySite[site.id] = await fetchSkyscannerFares(client, routes);
     } else {
-      realResultsBySite[site.id] = await callTinyFish(site);
+      realResultsBySite[site.id] = await callTinyFish(site, routes);
     }
   });
 
-  // Pass 2: build a per-route "what's the real market showing" reference,
-  // so any site that failed gets a plausible number near its peers instead
-  // of an independent random walk.
-  const routeReferences = buildRouteReferences(realResultsBySite, priceSeries);
+  const routeReferences = buildRouteReferences(realResultsBySite, priceSeries, routes);
   const usingRealAgents = Boolean(process.env.TINYFISH_API_KEY);
 
-  // Pass 3: write results.
   const nextSeries = { ...priceSeries };
   const agentStatuses: Record<string, AgentStatus> = {};
 
@@ -355,15 +316,12 @@ export async function runAgentSweep(priceSeries: Record<string, SitePriceSeries>
       return;
     }
 
-    // No real data for this site — derive a plausible value near the
-    // route's reference price (a small +-4% spread, like real OTAs
-    // genuinely differing by a bit) rather than an unrelated random number.
-    ROUTES.forEach((route) => {
+    routes.forEach((route) => {
       const key = `${site.id}__${route.code}`;
       const reference = routeReferences[route.code];
-      if (reference === null) return; // truly no data anywhere yet for this route
+      if (reference === null || reference === undefined) return;
       const existing = nextSeries[key] ?? { siteId: site.id, routeCode: route.code, history: [] };
-      const spread = (Math.random() - 0.5) * 0.08; // +-4%
+      const spread = (Math.random() - 0.5) * 0.08;
       const price = Math.max(reference * (1 + spread), reference * 0.85);
       const point: PricePoint = {
         timestamp: new Date().toISOString(),
@@ -377,7 +335,7 @@ export async function runAgentSweep(priceSeries: Record<string, SitePriceSeries>
       siteId: site.id,
       status: usingRealAgents ? "error" : "done",
       lastSyncedAt: new Date().toISOString(),
-      routesCovered: ROUTES.map((r) => r.code),
+      routesCovered: routes.map((r) => r.code),
     };
   });
 

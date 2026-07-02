@@ -22,7 +22,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const priceSeries = await ensureSeeded();
-  const recommendations = await buildRecommendations(priceSeries);
+  const routes = await store.getRoutes();
+  const recommendations = await buildRecommendations(priceSeries, routes);
   await store.setRecommendations(recommendations);
   await store.setMeta({ lastAnalyzeAt: new Date().toISOString() });
   return NextResponse.json({ ok: true, recommendations });

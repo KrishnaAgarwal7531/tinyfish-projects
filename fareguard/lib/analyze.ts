@@ -1,17 +1,21 @@
-import type { SitePriceSeries, RouteRecommendation, RouteCode } from "./types";
-import { ROUTES } from "./seed";
+import type { SitePriceSeries, RouteRecommendation, RouteCode, RouteInfo } from "./types";
 
-function bestSeriesPerRoute(priceSeries: Record<string, SitePriceSeries>) {
-  const byRoute: Record<RouteCode, SitePriceSeries[]> = { "HAN-SGN": [], "SGN-DAD": [] };
-  Object.values(priceSeries).forEach((s) => byRoute[s.routeCode].push(s));
+function bestSeriesPerRoute(priceSeries: Record<string, SitePriceSeries>, routes: RouteInfo[]) {
+  const byRoute: Record<RouteCode, SitePriceSeries[]> = {};
+  routes.forEach((r) => (byRoute[r.code] = []));
+  Object.values(priceSeries).forEach((s) => {
+    if (byRoute[s.routeCode]) byRoute[s.routeCode].push(s);
+  });
   return byRoute;
 }
 
 // Used when GROQ_API_KEY isn't set, or the call fails — keeps the dashboard
 // useful without an external dependency.
-function heuristicRecommendations(priceSeries: Record<string, SitePriceSeries>): RouteRecommendation[] {
-  const byRoute = bestSeriesPerRoute(priceSeries);
-  return ROUTES.map((route) => {
+function heuristicRecommendations(priceSeries: Record<string, SitePriceSeries>, routes: RouteInfo[]): RouteRecommendation[] {
+  const byRoute = bestSeriesPerRoute(priceSeries, routes);
+  return routes
+    .filter((route) => byRoute[route.code]?.length > 0)
+    .map((route) => {
     const series = byRoute[route.code];
     const cheapest = series.reduce((min, s) => {
       const last = s.history[s.history.length - 1]?.priceVnd ?? Infinity;
@@ -48,13 +52,13 @@ function heuristicRecommendations(priceSeries: Record<string, SitePriceSeries>):
   });
 }
 
-export async function buildRecommendations(priceSeries: Record<string, SitePriceSeries>): Promise<RouteRecommendation[]> {
+export async function buildRecommendations(priceSeries: Record<string, SitePriceSeries>, routes: RouteInfo[]): Promise<RouteRecommendation[]> {
   const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return heuristicRecommendations(priceSeries);
+  if (!apiKey) return heuristicRecommendations(priceSeries, routes);
 
   try {
-    const byRoute = bestSeriesPerRoute(priceSeries);
-    const summary = ROUTES.map((route) => ({
+    const byRoute = bestSeriesPerRoute(priceSeries, routes);
+    const summary = routes.map((route) => ({
       route: route.code,
       label: route.label,
       sites: byRoute[route.code].map((s) => ({
@@ -92,14 +96,14 @@ export async function buildRecommendations(priceSeries: Record<string, SitePrice
       }),
     });
 
-    if (!res.ok) return heuristicRecommendations(priceSeries);
+    if (!res.ok) return heuristicRecommendations(priceSeries, routes);
     const data = await res.json();
     const text: string = data.choices?.[0]?.message?.content ?? "";
     const cleaned = text.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleaned);
-    if (!Array.isArray(parsed) || parsed.length === 0) return heuristicRecommendations(priceSeries);
+    if (!Array.isArray(parsed) || parsed.length === 0) return heuristicRecommendations(priceSeries, routes);
     return parsed;
   } catch {
-    return heuristicRecommendations(priceSeries);
+    return heuristicRecommendations(priceSeries, routes);
   }
 }

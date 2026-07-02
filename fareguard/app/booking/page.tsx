@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { CalendarClock } from "lucide-react";
-import { ROUTES, SITES } from "@/lib/seed";
-import type { BookingRequest, RouteCode } from "@/lib/types";
+import { SITES } from "@/lib/seed";
+import type { BookingRequest, RouteCode, RouteInfo } from "@/lib/types";
 import { formatVnd, formatDate } from "@/lib/format";
 
 const STATUS_LABEL: Record<BookingRequest["status"], string> = {
@@ -13,19 +13,23 @@ const STATUS_LABEL: Record<BookingRequest["status"], string> = {
 
 export default function BookingPage() {
   const [requests, setRequests] = useState<BookingRequest[]>([]);
+  const [routes, setRoutes] = useState<RouteInfo[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     passengerName: "",
-    routeCode: "HAN-SGN" as RouteCode,
+    routeCode: "" as RouteCode,
     travelDate: "",
     thresholdVnd: "",
     preferredSiteId: "vietjet",
   });
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/booking-requests");
-    const data = await res.json();
+    const [reqRes, routesRes] = await Promise.all([fetch("/api/booking-requests"), fetch("/api/routes")]);
+    const data = await reqRes.json();
+    const routesData = await routesRes.json();
     setRequests(data.requests);
+    setRoutes(routesData.routes);
+    setForm((f) => (f.routeCode ? f : { ...f, routeCode: routesData.routes[0]?.code ?? "" }));
   }, []);
 
   useEffect(() => {
@@ -41,7 +45,7 @@ export default function BookingPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
     });
-    setForm({ passengerName: "", routeCode: "HAN-SGN", travelDate: "", thresholdVnd: "", preferredSiteId: "vietjet" });
+    setForm({ passengerName: "", routeCode: routes[0]?.code ?? "", travelDate: "", thresholdVnd: "", preferredSiteId: "vietjet" });
     await load();
     setSubmitting(false);
   }
@@ -57,7 +61,7 @@ export default function BookingPage() {
         <div className="card-surface rounded-xl p-5">
           <p className="font-medium text-sm mb-1">New booking request</p>
           <p className="text-xs text-text-muted mb-4">
-            Threshold checks only happen as part of a scheduled sweep (every 4 hours) — adding a request here never
+            Threshold checks only happen as part of a scheduled sweep (every 8 hours) — adding a request here never
             fires a search itself. When the fare drops to or below the threshold, it shows as booked here. This is a
             demo status only — no real booking or payment happens yet.
           </p>
@@ -78,7 +82,7 @@ export default function BookingPage() {
                 onChange={(e) => setForm({ ...form, routeCode: e.target.value as RouteCode })}
                 className="w-full bg-surface-alt border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-shadow"
               >
-                {ROUTES.map((r) => (
+                {routes.map((r) => (
                   <option key={r.code} value={r.code}>
                     {r.from} → {r.to}
                   </option>

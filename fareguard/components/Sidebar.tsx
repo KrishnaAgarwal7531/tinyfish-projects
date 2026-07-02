@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, CalendarClock } from "lucide-react";
+import { LayoutDashboard, CalendarClock, Route, FileDown } from "lucide-react";
 import Logo from "./Logo";
 import ThemeToggle from "./ThemeToggle";
 
 const items = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/booking", label: "Booking requests", icon: CalendarClock },
+  { href: "/#monitored-routes", label: "Routes", icon: Route },
 ];
 
 export default function Sidebar() {
@@ -44,7 +45,7 @@ export default function Sidebar() {
 
       <nav className="relative flex-1 px-3 py-4 space-y-0.5">
         {items.map((item) => {
-          const active = pathname === item.href;
+          const active = pathname === item.href.split("#")[0] && !item.href.includes("#");
           const Icon = item.icon;
           return (
             <Link
@@ -61,6 +62,13 @@ export default function Sidebar() {
             </Link>
           );
         })}
+        <a
+          href="/api/report"
+          className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-text-secondary hover:text-text-primary hover:bg-surface-alt transition-colors"
+        >
+          <FileDown size={16} strokeWidth={1.75} />
+          Reports
+        </a>
       </nav>
 
       <div className="relative px-5 py-4 border-t border-border flex items-center justify-between">

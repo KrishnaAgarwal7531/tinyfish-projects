@@ -4,7 +4,7 @@ on:
   schedule:
     # Every 4 hours. GitHub Actions runners have no execution time cap like
     # Vercel does, so this is where the real 7-site TinyFish sweep runs.
-    - cron: "0 */4 * * *"
+    - cron: "0 */8 * * *"
   workflow_dispatch: {}
     # Lets the deployed app's "Run sweep now" button trigger this on demand
     # via the GitHub API (see lib/github.ts), and lets you trigger it by

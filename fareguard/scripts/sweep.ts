@@ -1,4 +1,4 @@
-// Run by .github/workflows/sweep.yml every 4 hours. This is intentionally
+// Run by .github/workflows/sweep.yml every 8 hours. This is intentionally
 // NOT a Vercel route — GitHub Actions runners have no per-job time limit
 // anywhere near Vercel's, so the full 7-site TinyFish sweep (and the daily
 // Groq analysis, when due) can take as long as it actually needs.

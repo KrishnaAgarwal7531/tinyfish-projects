@@ -1,24 +1,23 @@
 import { store } from "./store";
-import { generateSeedData } from "./seed";
-import { SITES, ROUTES } from "./seed";
+import { generateSeedData, SITES } from "./seed";
 import { runAgentSweep } from "./agents";
 import { checkBookingThresholds } from "./booking";
 import { buildRecommendations } from "./analyze";
 
 // Guarantees every (site, route) combination has at least seed data, so the
 // dashboard never shows a blank/flat chart — even if a previous sweep only
-// partially completed (some sites real, some failed, some never run yet).
-// Existing real or simulated data is always preserved; only missing keys
-// get backfilled from synthetic seed data.
+// partially completed (some sites real, some failed, some never run yet),
+// or a route was just added and has no history yet.
 export async function ensureSeeded() {
+  const routes = await store.getRoutes();
   const existing = await store.getPriceSeries();
-  const expectedKeys = SITES.length * ROUTES.length;
+  const expectedKeys = SITES.length * routes.length;
   const existingKeys = Object.keys(existing);
   if (existingKeys.length >= expectedKeys && existingKeys.every((k) => existing[k]?.history?.length > 0)) {
     return existing;
   }
 
-  const seed = generateSeedData();
+  const seed = generateSeedData(routes);
   const merged = { ...seed.priceSeries, ...existing }; // existing data wins over seed on key collisions
   await store.setPriceSeries(merged);
 
@@ -53,7 +52,8 @@ export async function runSweepAndMaybeAnalyze(reason: string) {
   await store.setMeta({ sweepStartedAt: new Date().toISOString() });
 
   const current = await ensureSeeded();
-  const { priceSeries, agentStatuses } = await runAgentSweep(current);
+  const routes = await store.getRoutes();
+  const { priceSeries, agentStatuses } = await runAgentSweep(current, routes);
   await store.setPriceSeries(priceSeries);
   await store.setAgentStatuses(agentStatuses);
 
@@ -67,7 +67,7 @@ export async function runSweepAndMaybeAnalyze(reason: string) {
   const meta = await store.getMeta();
   let analyzed = false;
   if (isDue(meta.lastAnalyzeAt, meta.analyzeIntervalMs)) {
-    const recommendations = await buildRecommendations(priceSeries);
+    const recommendations = await buildRecommendations(priceSeries, routes);
     await store.setRecommendations(recommendations);
     await store.setMeta({ lastAnalyzeAt: new Date().toISOString() });
     analyzed = true;

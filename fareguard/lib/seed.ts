@@ -1,6 +1,9 @@
 import type { RouteInfo, SiteInfo, SitePriceSeries, AgentStatus, PricePoint, RouteCode } from "./types";
 
-export const ROUTES: RouteInfo[] = [
+// The starting set of routes — after this, routes are stored and can grow
+// via the "Add route" flow (see /api/routes). This is only the seed for a
+// brand new install, not a fixed list.
+export const DEFAULT_ROUTES: RouteInfo[] = [
   { code: "HAN-SGN", from: "HAN", fromCity: "Hanoi", to: "SGN", toCity: "Ho Chi Minh City", label: "Hanoi to Ho Chi Minh City" },
   { code: "SGN-DAD", from: "SGN", fromCity: "Ho Chi Minh City", to: "DAD", toCity: "Da Nang", label: "Ho Chi Minh City to Da Nang" },
 ];
@@ -15,11 +18,11 @@ export const SITES: SiteInfo[] = [
   { id: "skyscanner-vn", name: "Skyscanner VN", type: "OTA", supportsAutoFill: false, url: "https://www.skyscanner.com.vn/", useFetch: true },
 ];
 
-// Base one-way economy fares in VND, anchored to real published fare ranges
-// (Vietjet/Vietnam Airlines/Bamboo public fare pages, Expedia/Skyscanner/Travelocity
-// route data) for each route. OTAs are priced near the cheapest underlying airline
-// since they aggregate the same inventory.
-const BASE_FARES: Record<RouteCode, Record<string, number>> = {
+// Base one-way economy fares in VND for the two default routes, anchored to
+// real published fare ranges. Routes added later (via "Add route") fall
+// back to GENERIC_BASE_FARE since we don't have a researched anchor for
+// arbitrary user-added routes.
+const BASE_FARES: Record<string, Record<string, number>> = {
   "HAN-SGN": {
     vietjet: 1250000,
     "vietnam-airlines": 2650000,
@@ -38,6 +41,16 @@ const BASE_FARES: Record<RouteCode, Record<string, number>> = {
     "12bay": 1090000,
     "skyscanner-vn": 1070000,
   },
+};
+
+const GENERIC_BASE_FARE: Record<string, number> = {
+  vietjet: 1150000,
+  "vietnam-airlines": 2200000,
+  bamboo: 1350000,
+  traveloka: 1130000,
+  baolau: 1200000,
+  "12bay": 1170000,
+  "skyscanner-vn": 1140000,
 };
 
 // Deterministic PRNG so seed data is stable across reloads/restarts.
@@ -77,7 +90,7 @@ function generateHistory(siteId: string, routeCode: RouteCode, basePrice: number
   return points;
 }
 
-export function generateSeedData(): {
+export function generateSeedData(routes: RouteInfo[]): {
   priceSeries: Record<string, SitePriceSeries>;
   agentStatuses: Record<string, AgentStatus>;
 } {
@@ -85,9 +98,9 @@ export function generateSeedData(): {
   const agentStatuses: Record<string, AgentStatus> = {};
 
   SITES.forEach((site, siteIndex) => {
-    ROUTES.forEach((route) => {
+    routes.forEach((route) => {
       const key = `${site.id}__${route.code}`;
-      const base = BASE_FARES[route.code][site.id];
+      const base = BASE_FARES[route.code]?.[site.id] ?? GENERIC_BASE_FARE[site.id] ?? 1200000;
       priceSeries[key] = {
         siteId: site.id,
         routeCode: route.code,
@@ -98,7 +111,7 @@ export function generateSeedData(): {
       siteId: site.id,
       status: "done",
       lastSyncedAt: new Date(Date.now() - siteIndex * 6 * 60 * 1000).toISOString(),
-      routesCovered: ROUTES.map((r) => r.code),
+      routesCovered: routes.map((r) => r.code),
     };
   });
 
